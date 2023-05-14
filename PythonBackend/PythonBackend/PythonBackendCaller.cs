@@ -32,7 +32,7 @@ namespace PythonBackend
             Guid g;
             // Create and display the value of two GUIDs.
             g = Guid.NewGuid();
-            session = tmpPath + @"dplus\" + g;
+            session = tmpPath + @"dplus/" + g;
             Directory.CreateDirectory(session);
             Console.WriteLine("session folder: " + session);
             exeDir = _exeDir;
