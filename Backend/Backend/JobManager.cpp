@@ -95,7 +95,7 @@ static void GenerateJobThread(void *args) {
 	{
 		err = PerformModelGeneration(&localArgs);
 	}
-	catch (backend_exception &be)
+	catch (backend_exception& be)
 	{
 		err = (ErrorCode)be.GetErrorCode();
 		errMsg = be.GetErrorMessage();
