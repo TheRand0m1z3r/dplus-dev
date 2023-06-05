@@ -3584,6 +3584,7 @@ ArrayXcX Amplitude::getAmplitudesAtPoints(const std::vector<FACC> & relevantQs, 
 	ArrayXcX phases;
 	getNewThetaPhiAndPhases(relevantQs, theta, phi, newTheta, newPhi, phases);
 
+	/*
 	if (GetUseGridWithChildren())
 	{
 		JacobianSphereGrid* jgrid = dynamic_cast<JacobianSphereGrid*>(grid);
@@ -3594,6 +3595,7 @@ ArrayXcX Amplitude::getAmplitudesAtPoints(const std::vector<FACC> & relevantQs, 
 			return jgrid->getAmplitudesAtPoints(relevantQs, newTheta, newPhi) * phases;
 		}
 	}
+	*/
 
 	return scale * getAmplitudesAtPointsWithoutGrid(newTheta, newPhi, relevantQs, phases);
 

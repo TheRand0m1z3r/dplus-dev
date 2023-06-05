@@ -348,7 +348,7 @@ void JobManager::CompleteJob(LocalBackend *backend, JobPtr job, bool bNotifyFron
 
 
 	{
-		lock_guard<mutex> lock(jobMutex);
+		lock_guard<mutex> guard(jobMutex);
 
 		// Thread tries to delete itself.
 		// TODO::Threads Think of a better design

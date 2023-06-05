@@ -259,7 +259,7 @@ VectorXd CompositeModel::CalculateVector(const std::vector<double>& q, int nLaye
 
 	_previous_intensity = vec;
 	_previous_q_values = Eigen::Map<const Eigen::ArrayXd>(q.data(), q.size());
-	std::cout << (scale * vec).array() + constant;
+	std::cout << (scale * vec).array() + constant << '\n';
 	return (scale * vec).array() + constant;
 }
 
