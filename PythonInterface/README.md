@@ -1,12 +1,15 @@
 ﻿
-This document was last updated on August 8 2022, for dplus-v4.6.1.0
+This document was last updated on June 6 2023, for dplus-v5.1.0.0
 
 # The Dplus Python API
 
 
 The D+ Python API allows using the D+ backend from Python, instead of the ordinary D+ application.
 
-The Python API works on both Windows and Linux.
+The Python API works on both Windows <s>and Linux. On Linux, one minimum requirement is that glibc>=2.24 (checked using `ldd --version`)</s>.
+
+A few examples on how to use the API are given in our [Jupyter notebook](https://github.com/uri-raviv-lab/dplus-dev/blob/development/PythonInterface/getting_started.ipynb).
+<!These are examples that recreate some of the figures from the D+ update paper ().>
 
 ## Installation
 
@@ -351,18 +354,18 @@ Populations can contain standard types of models.
 
 The available standard model classes are:
 
-| Model Name                    | location_params | extra_params | layer_params |
-|-------------------------------|---|---|---|
-| `UniformHollowCylinder`       | x, y, z,<br/>alpha, beta, gamma | scale, background,<br/>height | radius, ed
-| `Sphere`                      | x, y, z,<br/>alpha, beta, gamma | scale,<br/>background | radius, ed
-| `SymmetricLayeredSlabs`       | x, y, z,<br/>alpha, beta, gamma | scale, background,<br/>x_domain_size, y_domain_size | width, ed
-| `AsymmetricLayeredSlabs`      | x, y, z,<br/>alpha, beta, gamma | scale, background,<br/>x_domain_size, y_domain_size | width, ed
-| `Helix`                       | x, y, z,<br/>alpha, beta, gamma | scale, background,<br/>height, helix_radius,<br/>pitch | phase, ed,<br/>cross_section
-| `SpacefillingSymmetry`        | x, y, z,<br/>alpha, beta, gamma | scale | distance, angle,<br/>repetitions
-| `ManualSymmetry`              | x, y, z,<br/>alpha, beta, gamma | scale | Dependes on layers added
-| `PDB`- a PDB file             | x, y, z,<br/>alpha, beta, gamma | scale, solvent_ed,<br/>solvent_probe_radius,<br/>solvation_thickness,<br/> outer_solvent_ed, fill_holes,<br/>solvent_only, solvent_method | N/A
-| `EPDB`- an EPDB file          | x, y, z,<br/>alpha, beta, gamma | scale, solvent_ed,<br/>solvent_probe_radius,<br/>solvation_thickness,<br/> outer_solvent_ed, fill_holes,<br/>solvent_only, solvent_method | N/A
-| `AMP`- an amplitude grid file | x, y, z,<br/>alpha, beta, gamma | scale | N/A
+| Model Name                    | layer_params                    | extra_params | location_params |
+|-------------------------------|---------------------------------|---|---|
+| `UniformHollowCylinder`       | radius, ed                      | scale, background,<br/>height | x, y, z,<br/>alpha, beta, gamma
+| `Sphere`                      | radius, ed                      | scale,<br/>background | x, y, z,<br/>alpha, beta, gamma
+| `SymmetricLayeredSlabs`       | width, ed                       | scale, background,<br/>x_domain_size, y_domain_size | x, y, z,<br/>alpha, beta, gamma
+| `AsymmetricLayeredSlabs`      | width, ed | scale, background,<br/>x_domain_size, y_domain_size | x, y, z,<br/>alpha, beta, gamma
+| `Helix`                       | phase, ed,<br/>cross_section | scale, background,<br/>height, helix_radius,<br/>pitch | x, y, z,<br/>alpha, beta, gamma
+| `SpacefillingSymmetry`        | distance, angle,<br/>repetitions | scale | x, y, z,<br/>alpha, beta, gamma
+| `ManualSymmetry`              | x, y, z,<br/>alpha, beta, gamma | scale | x, y, z,<br/>alpha, beta, gamma
+| `PDB`- a PDB file             | N/A | scale, solvent_ed,<br/>solvent_probe_radius,<br/>solvation_thickness,<br/> outer_solvent_ed, fill_holes,<br/>solvent_only, solvent_method | x, y, z,<br/>alpha, beta, gamma
+| `EPDB`- an EPDB file          | N/A | scale, solvent_ed,<br/>solvent_probe_radius,<br/>solvation_thickness,<br/> outer_solvent_ed, fill_holes,<br/>solvent_only, solvent_method | x, y, z,<br/>alpha, beta, gamma
+| `AMP`- an amplitude grid file | N/A | scale | x, y, z,<br/>alpha, beta, gamma
 
 You can create any model by calling its initialization. 
 
