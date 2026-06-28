@@ -2,6 +2,26 @@ import math
 from collections import OrderedDict
 
 
+def _normalize_q_unit(unit):
+    '''
+    Normalize a q-unit string to "nm" (nm^-1) or "a" (Angstrom^-1).
+    Accepts common spellings: "nm", "nm^-1", "1/nm", "a", "A", "A^-1", "1/A".
+    '''
+    if unit is None:
+        return "nm"
+    u = str(unit).strip().lower().replace(" ", "")
+    if u in ("nm", "nm^-1", "nm-1", "1/nm", "nminv"):
+        return "nm"
+    if u in ("a", "ang", "angstrom", "a^-1", "a-1", "1/a", "ainv"):
+        return "a"
+    raise ValueError("q_units must be 'nm' (nm^-1) or 'a' (Angstrom^-1)")
+
+
+def _q_unit_scale_to_nm(unit):
+    '''Multiplier that converts a q value in the given unit into nm^-1.'''
+    return 10.0 if _normalize_q_unit(unit) == "a" else 1.0
+
+
 class Signal:
     '''
     A class that represents a Signal.
@@ -142,14 +162,18 @@ class Signal:
         return Signal(x, y)
 
     @classmethod
-    def read_from_file(cls, filename):
+    def read_from_file(cls, filename, q_units="nm"):
         '''
              gets a file name and load the file as a Signal class
 
             :param filename: signal file name
+            :param q_units: units of the q column in the file. Accepts "nm" (default,
+                            meaning nm^-1) or "a" (Angstrom^-1). Values are stored
+                            canonically in nm^-1, so "a" input is multiplied by 10.
             :return: instance of Signal class
 
              '''
+        scale = _q_unit_scale_to_nm(q_units)
         x_vec = []
         y_vec = []
         with open(filename) as signal_file:
@@ -159,7 +183,7 @@ class Signal:
                 values = line.split()
                 if len(values) > 1:  # two float values
                     try:
-                        x = float(values[0])
+                        x = float(values[0]) * scale
                         y = float(values[1])
                         x_vec.append(x)
                         y_vec.append(y)

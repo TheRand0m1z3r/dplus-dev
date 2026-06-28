@@ -9,7 +9,7 @@ Domain is located in DataModels.py
 '''
 
 import warnings
-from dplus.Signal import Signal
+from dplus.Signal import Signal, _normalize_q_unit
 from dplus.DataModels import Domain, Parameter
 
 RESOLUTION_SIGMA_DEFAULT = 0.02
@@ -23,6 +23,7 @@ class DomainPreferences:
 
     def __init__(self, is2D=False):
         self.__signal_file = ""
+        self.__signal_file_units = "nm"
         self.__convergence = 0.001
         self.__grid_size = 200
         self.__orientation_iterations = 1e6
@@ -93,11 +94,32 @@ class DomainPreferences:
 
     @signal_file.setter
     def signal_file(self, sigfile):
+        self.set_signal_file(sigfile, self.__signal_file_units)
+
+    @property
+    def signal_file_units(self):
+        '''
+        Units of the q column in the loaded signal file: "nm" (nm^-1, default)
+        or "a" (Angstrom^-1). Used both when loading the file and when
+        exporting results so the round-trip matches the user's chosen unit.
+        '''
+        return self.__signal_file_units
+
+    @signal_file_units.setter
+    def signal_file_units(self, units):
+        self.__signal_file_units = _normalize_q_unit(units)
+
+    def set_signal_file(self, sigfile, units="nm"):
+        '''
+        Load a signal file, declaring whether its q column is in "nm" (nm^-1)
+        or "a" (Angstrom^-1). q is stored canonically in nm^-1.
+        '''
+        self.__signal_file_units = _normalize_q_unit(units)
         if not sigfile or sigfile == "":
             self.__signal_file = ""
             return
         try:
-            self.signal = Signal.read_from_file(sigfile)
+            self.signal = Signal.read_from_file(sigfile, self.__signal_file_units)
             self.signal = self.signal.get_validated()  # remove negative intensity values
             self.__signal_file = sigfile
         except FileNotFoundError:
@@ -262,6 +284,7 @@ class DomainPreferences:
     def serialize(self):
         return {
             "SignalFile": self.signal_file,
+            "SignalFileUnits": self.signal_file_units,
             "Convergence": self.convergence,
             "GridSize": self.grid_size,
             "UseGrid": self.use_grid,  # [true,false] Self explanatory?
@@ -289,7 +312,7 @@ class DomainPreferences:
 
         :param in_dict: json dictionary
         """
-        self.signal_file = in_dict.get("SignalFile", "")
+        self.set_signal_file(in_dict.get("SignalFile", ""), in_dict.get("SignalFileUnits", "nm"))
         self.convergence = in_dict["Convergence"]
         self.grid_size = in_dict["GridSize"]
         self.use_grid = in_dict["UseGrid"]

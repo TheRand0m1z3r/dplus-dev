@@ -1010,7 +1010,8 @@ private: System::Void closeSignalToolStripMenuItem_Click(System::Object^  sender
 		 System::String ^GetLuaScript(void);
 		 bool Save1DGraph();
 public:
-		 void LoadSignal( String ^filename );
+		 void LoadSignal( String ^filename, bool useAngstrom );
+		 void LoadSignal( String ^filename ) { LoadSignal(filename, false); }
 
 		 // Parses a Lua expression from "=expr" string
 		 Double LuaParseExpression(String ^ val);

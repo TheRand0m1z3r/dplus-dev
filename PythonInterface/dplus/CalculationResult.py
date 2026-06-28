@@ -1,7 +1,7 @@
 import pprint
 from collections import OrderedDict
 from dplus.CalculationInput import CalculationInput
-from dplus.Signal import Signal
+from dplus.Signal import Signal, _normalize_q_unit
 import time
 import numpy as np
 from csv import reader
@@ -136,15 +136,25 @@ class CalculationResult(object):
             return self._raw_result["error"]
         return {"code": 0, "message": "no error"}
 
-    def save_to_out_file(self, filename):
+    def save_to_out_file(self, filename, q_units=None):
         '''
         receives file name, and saves the results to the file.
         :param filename: string of filename/path
+        :param q_units: units for the q column on disk: "nm" (nm^-1) or "a"
+                        (Angstrom^-1). q is stored canonically in nm^-1, so
+                        "a" divides x by 10. If None, falls back to the
+                        DomainPreferences.signal_file_units of the input state.
         '''
+        if q_units is None:
+            q_units = getattr(self._calc_data.DomainPreferences, "signal_file_units", "nm")
+        unit = _normalize_q_unit(q_units)
+        scale = 0.1 if unit == "a" else 1.0
+        unit_label = "A^-1" if unit == "a" else "nm^-1"
         with open(filename, 'w') as out_file:
             domain_preferences = self._calc_data.DomainPreferences
             out_file.write("# Integration parameters:\n")
-            out_file.write("#\tqmax\t{}\n".format(domain_preferences.q_max))
+            out_file.write("#\tqmax\t{}\n".format(domain_preferences.q_max * scale))
+            out_file.write("#\tq units\t{}\n".format(unit_label))
             out_file.write("#\tOrientation Method\t{}\n".format(domain_preferences.orientation_method))
             out_file.write("#\tOrientation Iterations\t{}\n".format(domain_preferences.orientation_iterations))
             out_file.write("#\tConvergence\t{}\n\n".format(domain_preferences.convergence))
@@ -152,7 +162,7 @@ class CalculationResult(object):
             for value in self.headers.values():
                 out_file.write(value)
             for key, value in self.graph.items():
-                out_file.write('{:.5f}\t{:.20f}\n'.format(key, value))
+                out_file.write('{:.5f}\t{:.20f}\n'.format(key * scale, value))
 
     def save_to_2D_out_file(qp, qz, I, filename=None):
         '''

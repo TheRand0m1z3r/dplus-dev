@@ -1,4 +1,6 @@
 #include <windows.h> // For COLORREF
+#include <ShObjIdl.h> // For IFileOpenDialog/IFileSaveDialog (custom checkbox in file dialog)
+#pragma comment(lib, "ole32.lib") // CoCreateInstance / CoTaskMemFree used by the file-dialog helper
 
 #include "MainWindow.h"
 #include "AboutDPlus.h"
@@ -2754,20 +2756,90 @@ namespace DPlus {
 		return mi;
 	}
 
+	// Shows the Vista-style IFileDialog with an extra "Q values in Å⁻¹" check button
+	// embedded directly in the dialog (no separate popup). On success returns true and
+	// fills outPath / outUseAngstrom. checkboxInitial seeds the toggle.
+	static bool ShowSignalFileDialogWithUnitToggle(
+		HWND owner, bool save, LPCWSTR title,
+		const COMDLG_FILTERSPEC* filters, UINT numFilters, LPCWSTR defaultExt,
+		bool checkboxInitial, System::String^% outPath, bool% outUseAngstrom)
+	{
+		IFileDialog* pfd = nullptr;
+		HRESULT hr = CoCreateInstance(
+			save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog,
+			NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd));
+		if (FAILED(hr)) return false;
+
+		pfd->SetTitle(title);
+		if (filters && numFilters > 0) pfd->SetFileTypes(numFilters, filters);
+		if (defaultExt) pfd->SetDefaultExtension(defaultExt);
+
+		// Two mutually-exclusive options in a radio-button group, matching the
+		// nm⁻¹ / Å⁻¹ toggle on GraphPane2D.
+		const DWORD GROUP_ID  = 1000;
+		const DWORD RADIO_ID  = 1001;
+		const int   RADIO_NM  = 0;
+		const int   RADIO_ANG = 1;
+		IFileDialogCustomize* pfdc = nullptr;
+		if (SUCCEEDED(pfd->QueryInterface(IID_PPV_ARGS(&pfdc)))) {
+			pfdc->StartVisualGroup(GROUP_ID, L"Q units");
+			pfdc->AddRadioButtonList(RADIO_ID);
+			pfdc->AddControlItem(RADIO_ID, RADIO_NM,  L"nm\u207B\u00B9");        // nm⁻¹
+			pfdc->AddControlItem(RADIO_ID, RADIO_ANG, L"\u00C5\u207B\u00B9");    // Å⁻¹
+			pfdc->SetSelectedControlItem(RADIO_ID, checkboxInitial ? RADIO_ANG : RADIO_NM);
+			pfdc->EndVisualGroup();
+		}
+
+		hr = pfd->Show(owner);
+		if (FAILED(hr)) {
+			if (pfdc) pfdc->Release();
+			pfd->Release();
+			return false; // user cancelled or error
+		}
+
+		DWORD selected = RADIO_NM;
+		if (pfdc) {
+			pfdc->GetSelectedControlItem(RADIO_ID, &selected);
+			pfdc->Release();
+		}
+		outUseAngstrom = (selected == RADIO_ANG);
+
+		bool ok = false;
+		IShellItem* psi = nullptr;
+		if (SUCCEEDED(pfd->GetResult(&psi))) {
+			PWSTR pszPath = nullptr;
+			if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath))) {
+				outPath = gcnew System::String(pszPath);
+				CoTaskMemFree(pszPath);
+				ok = true;
+			}
+			psi->Release();
+		}
+		pfd->Release();
+		return ok;
+	}
+
 	System::Void MainWindow::openSignalToolStripMenuItem_Click(System::Object^ sender, System::EventArgs^ e)
 	{
-		OpenFileDialog ^ofd = gcnew OpenFileDialog();
-		ofd->Filter = "Signal files (*.dat, *.chi, *.out)|*.dat;*.chi;*.out|All Files (*.*)|*.*";
-		ofd->FileName = "";
-		ofd->Title = "Choose a signal to work with";
-		if (ofd->ShowDialog() == System::Windows::Forms::DialogResult::Cancel)
+		COMDLG_FILTERSPEC filters[] = {
+			{ L"Signal files (*.dat, *.chi, *.out)", L"*.dat;*.chi;*.out" },
+			{ L"All Files (*.*)",                    L"*.*"               },
+		};
+
+		System::String^ chosenPath = nullptr;
+		bool useAngstrom = false;
+		HWND hwnd = (HWND)this->Handle.ToPointer();
+		if (!ShowSignalFileDialogWithUnitToggle(
+				hwnd, /*save=*/false, L"Choose a signal to work with",
+				filters, _countof(filters), nullptr,
+				/*checkboxInitial=*/false, chosenPath, useAngstrom))
 			return;
 
-		LoadSignal(ofd->FileName);
+		LoadSignal(chosenPath, useAngstrom);
 	}
 
 
-	void MainWindow::LoadSignal(String ^filename) {
+	void MainWindow::LoadSignal(String ^filename, bool useAngstrom) {
 		if (!System::IO::File::Exists(filename)) {
 			MessageBox::Show("File " + filename + " does not exist!", "Warning",
 				MessageBoxButtons::OK, MessageBoxIcon::Warning);
@@ -2780,6 +2852,12 @@ namespace DPlus {
 		if (xv.size() == 0 || yv.size() == 0) {
 			MessageBox::Show("Error loading file", "ERROR", MessageBoxButtons::OK, MessageBoxIcon::Error);
 			return;
+		}
+
+		// Convert Å⁻¹ → nm⁻¹ (canonical) when the user said the file was in Å⁻¹.
+		if (useAngstrom) {
+			for (size_t i = 0; i < xv.size(); ++i)
+				xv[i] *= 10.0;
 		}
 
 		int negative_values = (Eigen::Map<Eigen::ArrayXd>(yv.data(), yv.size()) < 0).count();
@@ -2997,17 +3075,31 @@ namespace DPlus {
 		xv = arraytovector(xa);
 		graph = arraytovector(ya);
 
-		SaveFileDialog ^sfd = gcnew SaveFileDialog();
-		sfd->Filter = "Saved 1D Model (*.out)|*.out|All Files (*.*)|*.*";
-		sfd->FileName = "";
-		sfd->Title = "Save Model As...";
-		sfd->OverwritePrompt = true;
-		if (sfd->ShowDialog() == System::Windows::Forms::DialogResult::Cancel)
+		COMDLG_FILTERSPEC filters[] = {
+			{ L"Saved 1D Model (*.out)", L"*.out" },
+			{ L"Chi data (*.chi)",       L"*.chi" },
+			{ L"Generic data (*.dat)",   L"*.dat" },
+			{ L"All Files (*.*)",        L"*.*"   },
+		};
+
+		System::String^ chosenPath = nullptr;
+		bool useAngstrom = false;
+		HWND hwnd = (HWND)this->Handle.ToPointer();
+		if (!ShowSignalFileDialogWithUnitToggle(
+				hwnd, /*save=*/true, L"Save Model As...",
+				filters, _countof(filters), L"out",
+				/*checkboxInitial=*/false, chosenPath, useAngstrom))
 			return false;
+
+		if (useAngstrom) {
+			for (size_t i = 0; i < xv.size(); ++i)
+				xv[i] *= 0.1;
+		}
 
 		std::stringstream ss;
 		ss << "# Integration parameters:\n";
 		ss << "#\tqmax\t" << xv[xv.size() - 1] << "\n";
+		ss << "#\tq units\t" << (useAngstrom ? "A^-1" : "nm^-1") << "\n";
 		ss << "#\tOrientation Method\t" << clrToString(((PreferencesPane^)PaneList[PREFERENCES])->integrationMethodComboBox->Text) << "\n";
 		ss << "#\tOrientation Iterations\t" << clrToString(((PreferencesPane^)PaneList[PREFERENCES])->integIterTextBox->Text) << "\n";
 		ss << "#\tConvergence\t" << clrToString(((PreferencesPane^)PaneList[PREFERENCES])->convTextBox->Text) << "\n";
@@ -3026,7 +3118,7 @@ namespace DPlus {
 			ss << grry;
 			delete grry;
 		}
-		WriteDataFileWHeader(clrToWstring(sfd->FileName).c_str(), xv, graph, ss);
+		WriteDataFileWHeader(clrToWstring(chosenPath).c_str(), xv, graph, ss);
 
 		return true;
 	}
