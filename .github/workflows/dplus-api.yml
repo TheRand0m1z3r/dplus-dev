@@ -5,39 +5,7 @@ on:
       - api-v*
 
 jobs:
-  manylinux-wheels:
-    runs-on: ubuntu-latest
-    name: Create the manylinux wheels for all supported Python versions
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Build docker image
-        working-directory: PythonInterface
-        run: docker build -f Dockerfile.manylinux .. -t dplus-api-manylinux:latest --build-arg GITHUB_VERSION=${{ github.ref }}
-      - name: Copy wheels
-        working-directory: PythonInterface
-        run: docker run --rm --name dplus-api-manylinux -v `pwd`:/external dplus-api-manylinux:latest
-      - name: Upload to Release
-        id: upload-release-asset
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: PythonInterface/dplus-api-wheels/dplus_api*.whl
-          file_glob: true
-          tag: ${{ github.ref }}
-          overwrite: true
-          body: "DPlus API Manylinux Wheels"
-      - name: Upload to Gemfury
-        env:
-          GEMFURY_AUTH: ${{ secrets.GEMFURY_AUTH }}
-        run: |
-          for file in PythonInterface/dplus-api-wheels/dplus_api*.whl; do
-            curl -f -F "package=@${file}" \
-              https://${GEMFURY_AUTH}@push.fury.io/theresearchsoftwarecompany/
-          done
-
+  # ---------------- Backend build (Windows) ----------------
   build-backend-windows:
     runs-on: windows-2022
     name: Compile Windows Backend
@@ -69,15 +37,14 @@ jobs:
           path: x64/Release/
           retention-days: 1
 
+  # ---------------- Wheel builds (produce artifacts only) ----------------
   windows-wheels:
     runs-on: windows-2022
     needs: build-backend-windows
-    permissions:
-      contents: write
     strategy:
       matrix:
         python-version: [ '3.11', '3.12', '3.13' ]
-    name: Create the Windows Wheel for Python ${{ matrix.python-version }}
+    name: Windows Wheel (py${{ matrix.python-version }})
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -97,7 +64,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install wheel
-      - name: Create the wheel
+      - name: Build wheel
         working-directory: PythonInterface
         env:
           DPLUS_API_DEBUG: NO
@@ -105,20 +72,89 @@ jobs:
         run: |
           python setup.py prepare
           pip wheel . --no-build-isolation
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheels-windows-py${{ matrix.python-version }}
+          path: PythonInterface/dplus_api*.whl
+          retention-days: 1
+
+  manylinux-wheels:
+    runs-on: ubuntu-latest
+    name: Manylinux Wheels
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Build docker image
+        working-directory: PythonInterface
+        run: docker build -f Dockerfile.manylinux .. -t dplus-api-manylinux:latest --build-arg GITHUB_VERSION=${{ github.ref }}
+      - name: Copy wheels
+        working-directory: PythonInterface
+        run: docker run --rm --name dplus-api-manylinux -v `pwd`:/external dplus-api-manylinux:latest
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheels-manylinux
+          path: PythonInterface/dplus-api-wheels/dplus_api*.whl
+          retention-days: 1
+
+  # ---------------- Publish stage 1: GitHub Release ----------------
+  upload-release:
+    runs-on: ubuntu-latest
+    name: Upload all wheels to GitHub Release
+    needs: [windows-wheels, manylinux-wheels]
+    permissions:
+      contents: write
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: wheels-*
+          merge-multiple: true
+      - name: List collected wheels
+        run: ls -la dist/
       - name: Upload to Release
-        id: upload-release-asset
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: PythonInterface/dplus_api*.whl
+          file: dist/dplus_api*.whl
           file_glob: true
           tag: ${{ github.ref }}
           overwrite: true
-          body: "Windows Wheels"
+          body: "DPlus API wheels (Windows, Manylinux)"
+
+  # ---------------- Publish stage 2: Gemfury + PyPI ----------------
+  publish-packages:
+    runs-on: ubuntu-latest
+    name: Publish to Gemfury and PyPI
+    needs: upload-release
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: wheels-*
+          merge-multiple: true
+      - name: List collected wheels
+        run: ls -la dist/
       - name: Upload to Gemfury
         env:
           GEMFURY_AUTH: ${{ secrets.GEMFURY_AUTH }}
         run: |
-          Get-ChildItem -Path "PythonInterface/dplus_api*.whl" | ForEach-Object {
-              curl -f -F "package=@$($_.FullName)" "https://$env:GEMFURY_AUTH@push.fury.io/theresearchsoftwarecompany/"
-          }
+          for file in dist/dplus_api*.whl; do
+            echo "Pushing $file to Gemfury"
+            curl -f -F "package=@${file}" \
+              https://${GEMFURY_AUTH}@push.fury.io/theresearchsoftwarecompany/
+          done
+      - name: Setup Python for twine
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install twine
+        run: pip install --upgrade twine
+      - name: Upload to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_AUTH }}
+        run: twine upload --non-interactive --skip-existing dist/dplus_api*.whl
